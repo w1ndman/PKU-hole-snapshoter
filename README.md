@@ -7,7 +7,8 @@
 - 在刷新时若发现有被删除的帖子，查找本地储存，若发现有备份，则将数据插入至数据包中
 
 效果图：
-![16211689227937_ pic](https://github.com/w1ndman/PKU-hole-snapshoter/assets/132929861/039111f2-fc2a-469e-9b5a-229cd8216ae6)
+![16211689227937_ pic](https://github.com/w1ndman/PKU-hole-snapshoter/assets/132929861/a4dd7f9f-f980-456a-a501-162f858649be)
+
 
 
 **本脚本只能恢复之前获取过的数据，换句话说，只能恢复之前通过正在使用的这个浏览器窗口看过的树洞**
