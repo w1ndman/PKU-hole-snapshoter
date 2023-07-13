@@ -53,7 +53,7 @@ function fix_hole(pid, text) {
     return temp;
 }
 
-function fix_single_hole(data_,pid) {
+function fix_single_hole(data_, pid) {
     let data = {
         "pid": pid,
         "text": "DELETED",
@@ -89,7 +89,7 @@ function fix_single_hole(data_,pid) {
     return temp;
 }
 
-function fix_comment_page(pid, data, page, next,last,total,prev,limit) {
+function fix_comment_page(pid, data, page, next, last, total, prev, limit) {
     pid = pid.toString();
     last = last.toString();
     if (prev) {
@@ -99,25 +99,25 @@ function fix_comment_page(pid, data, page, next,last,total,prev,limit) {
     let prev_page_url = null;
 
     if (next != null) {
-        next_page_url = "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/"+pid+"?page="+next;
+        next_page_url = "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/" + pid + "?page=" + next;
     }
     if (prev != null) {
-        prev_page_url = "http://treehole.pku.edu.cn/api/pku_comment_v3/"+pid+"?page="+prev;
+        prev_page_url = "http://treehole.pku.edu.cn/api/pku_comment_v3/" + pid + "?page=" + prev;
     }
     let temp = {
         "code": 20000,
         "data": {
             "current_page": page,
             "data": data,
-            "first_page_url": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/"+pid+"?page=1",
-            "from": (page-1)*15 + 1,
+            "first_page_url": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/" + pid + "?page=1",
+            "from": (page - 1) * 15 + 1,
             "last_page": Number(last),
-            "last_page_url": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/"+pid+"?page="+last,
+            "last_page_url": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/" + pid + "?page=" + last,
             "next_page_url": next_page_url,
-            "path": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/"+pid,
+            "path": "http:\/\/treehole.pku.edu.cn\/api\/pku_comment_v3\/" + pid,
             "per_page": limit,
             "prev_page_url": prev_page_url,
-            "to": page*15,
+            "to": page * 15,
             "total": total
         },
         "message": "success",
@@ -132,18 +132,18 @@ function store_into_storage(key, value) { // 未来会换成indexedDB
 }
 
 function update_comment_list(pid, comment_data) {
-    let comment_list = localStorage.getItem("comment_"+pid.toString());
+    let comment_list = localStorage.getItem("comment_" + pid.toString());
     let comment_set = new Set()
     if (comment_list) {
         comment_set = new Set(JSON.parse(comment_list));
     }
-    comment_data.forEach(function(element) {
+    comment_data.forEach(function (element) {
         comment_set.add(element.cid);
     });
     let comment_array = Array.from(comment_set);
     comment_array.sort((a, b) => a.cid - b.cid);
-    console.log("cache comment list: ",pid);
-    store_into_storage("comment_"+pid.toString(), JSON.stringify(comment_array));
+    console.log("cache comment list: ", pid);
+    store_into_storage("comment_" + pid.toString(), JSON.stringify(comment_array));
 }
 
 async function cache_(url, request) {
@@ -151,25 +151,25 @@ async function cache_(url, request) {
 
     if (url.includes("api/pku_hole") || url.includes("follow_v2")) {
         let response_data = response_json.data.data;
-        response_data.forEach(function(element) {
-            store_into_storage("pid_"+element.pid.toString(), JSON.stringify(element));
-            console.log("cache pid: ",element.pid);
+        response_data.forEach(function (element) {
+            store_into_storage("pid_" + element.pid.toString(), JSON.stringify(element));
+            console.log("cache pid: ", element.pid);
         });
     } else if (url.includes("pku_comment_v3")) {
         let pid = Number(url.split("pku_comment_v3/")[1].split("?")[0]);
         if (response_json.code == 20000) {
             let response_data = response_json.data.data;
             update_comment_list(pid, response_data);
-            response_data.forEach(function(element) {
-                store_into_storage("cid_"+element.cid.toString(), JSON.stringify(element));
-                console.log("cache cid: ",element.cid);
+            response_data.forEach(function (element) {
+                store_into_storage("cid_" + element.cid.toString(), JSON.stringify(element));
+                console.log("cache cid: ", element.cid);
             });
         }
-    } 
+    }
 }
 
 function find_cache_available(pid) {
-    let value = localStorage.getItem("pid_"+pid.toString());
+    let value = localStorage.getItem("pid_" + pid.toString());
     if (value) {
         value = JSON.parse(value);
     }
@@ -181,22 +181,22 @@ function modify_holeapi_page(response_json) {
     let modified_data = []
     let missing_list = [];
     let last_pid = -1;
-    response_data.sort((a, b) => b.pid - a.pid );
-    response_data.forEach(function(element) {
-        if (element.pid < last_pid-1 ) {
-            var start = element.pid+1;
-            var end = last_pid-1;
+    response_data.sort((a, b) => b.pid - a.pid);
+    response_data.forEach(function (element) {
+        if (element.pid < last_pid - 1) {
+            var start = element.pid + 1;
+            var end = last_pid - 1;
             var part_range = Array.from({ length: end - start + 1 }, (_, index) => start + index).reverse();
             missing_list.concat(part_range);
-            part_range.forEach(function(missed_pid) {
+            part_range.forEach(function (missed_pid) {
                 let cache_seatch_res = find_cache_available(missed_pid);
                 if (cache_seatch_res) {
                     cache_seatch_res.tag = "backup";
                     modified_data.push(cache_seatch_res);
-                    console.log("backup found: ",missed_pid);
+                    console.log("backup found: ", missed_pid);
                 } else {
-                    modified_data.push(fix_hole(missed_pid,"DELETED"))
-                    console.log("backup not found: ",missed_pid);
+                    modified_data.push(fix_hole(missed_pid, "DELETED"))
+                    console.log("backup not found: ", missed_pid);
                 }
             })
         }
@@ -220,18 +220,18 @@ function modify_holeapi_hole(pid, response_json) {
     if (cache_seatch_res) {
         cache_seatch_res.tag = "backup";
         modified_data.push(cache_seatch_res);
-        console.log("backup found: ",pid);
+        console.log("backup found: ", pid);
     } else {
-        modified_data.push(fix_hole(pid,"DELETED"));
-        console.log("backup not found: ",pid);
+        modified_data.push(fix_hole(pid, "DELETED"));
+        console.log("backup not found: ", pid);
     }
     response_json.data.data = modified_data;
     let modifiedtext = JSON.stringify(response_json);
     return modifiedtext;
 }
 
-function modify_comment_page(pid, page,limit) {
-    let comment_list_str = localStorage.getItem("comment_"+pid.toString());
+function modify_comment_page(pid, page, limit) {
+    let comment_list_str = localStorage.getItem("comment_" + pid.toString());
     if (!comment_list_str) {
         return null;
     }
@@ -244,15 +244,15 @@ function modify_comment_page(pid, page,limit) {
     let total = comment_list.length;
     let prev = null;
     if (page > 1) {
-        prev = page -1;
+        prev = page - 1;
     }
-    if (page*limit < comment_list.length) {
-        next = page +1;
+    if (page * limit < comment_list.length) {
+        next = page + 1;
     }
     let data = [];
-    for (var i = (page-1)*15;i < page*15;i++) { 
-        if (i >= comment_list.length) { break;}
-        let comment_ = localStorage.getItem("cid_"+comment_list[i].toString());
+    for (var i = (page - 1) * 15; i < page * 15; i++) {
+        if (i >= comment_list.length) { break; }
+        let comment_ = localStorage.getItem("cid_" + comment_list[i].toString());
         if (comment_ == null) {
             data.push([]);
         } else {
@@ -262,7 +262,7 @@ function modify_comment_page(pid, page,limit) {
         }
 
     }
-    comment_page = fix_comment_page(pid,data,page,next,last,total,prev,limit);
+    comment_page = fix_comment_page(pid, data, page, next, last, total, prev, limit);
     return comment_page;
 
 }
@@ -280,27 +280,27 @@ function update_response(url, request) {
     let modifiedtext;
     if (url.includes("api/pku_hole") && url.includes("page") && (!url.includes("keyword"))) {
         modifiedtext = modify_holeapi_page(response_json);
-        Object.defineProperty(request, 'responseText', { value: modifiedtext }); 
+        Object.defineProperty(request, 'responseText', { value: modifiedtext });
 
     } else if (url.includes("api/pku_hole") && url.includes("pid")) {
         var pid = Number(url.split("pid=")[1]);
         modifiedtext = modify_holeapi_hole(pid, response_json);
         if (modifiedtext) {
-            console.log("modified pid: ",pid);
-            Object.defineProperty(request, 'responseText', { value: modifiedtext }); 
+            console.log("modified pid: ", pid);
+            Object.defineProperty(request, 'responseText', { value: modifiedtext });
         }
-    } else if (url.includes("pku_comment_v3") ) {
+    } else if (url.includes("pku_comment_v3")) {
         params = url.split("?")[1].split("&")
         let pid = Number(url.match(/comment_v3\/(\d+)\?/)[1]);
         let limit = Number(url.match(/limit=(\d+)/)[1]);
-        let page=null;
+        let page = null;
         if (url.includes("page")) {
             page = Number(url.match(/page=(\d+)/)[1]);
         }
         if (response_json.code != 20000) {
-            modifiedtext = modify_comment_page(pid,page,limit);
+            modifiedtext = modify_comment_page(pid, page, limit);
             if (modifiedtext) {
-                Object.defineProperty(request, 'responseText', { value: modifiedtext }); 
+                Object.defineProperty(request, 'responseText', { value: modifiedtext });
             }
         }
     } else if (url.includes("/api/pku/")) {
@@ -308,16 +308,16 @@ function update_response(url, request) {
         if (response_json.code != 20000) {
             modifiedtext = modify_single_hole(pid);
             if (modifiedtext) {
-                Object.defineProperty(request, 'responseText', { value: modifiedtext }); 
+                Object.defineProperty(request, 'responseText', { value: modifiedtext });
             }
-        } 
+        }
     }
 
 }
 
 function handle_response(url, request) {
     if (!needcache(url, request)) {
-        return ;
+        return;
     }
     cache_(url, request);
     update_response(url, request);
@@ -330,7 +330,7 @@ function handle_response(url, request) {
         this.addEventListener("readystatechange", function () {
             if (this.readyState === 4) {
                 if (method == "GET") {
-                    handle_response(url,this);
+                    handle_response(url, this);
                 }
             }
         });
