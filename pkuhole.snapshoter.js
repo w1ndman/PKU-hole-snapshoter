@@ -2,7 +2,7 @@
 // @name         PKU-Hole snapshoter
 // @author       WindMan
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @license      MIT License
 // @description  PKU-Hole snapshoter tool
 // @match        https://treehole.pku.edu.cn/web/*
@@ -68,7 +68,7 @@ function fix_single_hole(data_, pid) {
         "label": 0,
         "status": 0,
         "is_comment": 1,
-        "tag": "",
+        "tag": "backup",
         "is_follow": 0,
         "image_size": [
             0,
@@ -127,15 +127,16 @@ function fix_comment_page(pid, data, page, next, last, total, prev, limit) {
     return temp;
 }
 
-function store_into_storage(key, value) { // 未来会换成indexedDB
-    localStorage.setItem(key, value);
+function store_into_storage(table, key, value) {
+    addData(table, key, value);
 }
 
 function update_comment_list(pid, comment_data) {
-    let comment_list = localStorage.getItem("comment_" + pid.toString());
+    let comment_list = searchdata("map", "id", pid.toString())
     let comment_set = new Set()
     if (comment_list) {
-        comment_set = new Set(JSON.parse(comment_list));
+        console.log('comment_list', comment_list)
+        comment_set = new Set(comment_list);
     }
     comment_data.forEach(function (element) {
         comment_set.add(element.cid);
@@ -143,7 +144,7 @@ function update_comment_list(pid, comment_data) {
     let comment_array = Array.from(comment_set);
     comment_array.sort((a, b) => a.cid - b.cid);
     console.log("cache comment list: ", pid);
-    store_into_storage("comment_" + pid.toString(), JSON.stringify(comment_array));
+    store_into_storage("map", pid.toString(), comment_array);
 }
 
 async function cache_(url, request) {
@@ -152,26 +153,30 @@ async function cache_(url, request) {
     if (url.includes("api/pku_hole") || url.includes("follow_v2")) {
         let response_data = response_json.data.data;
         response_data.forEach(function (element) {
-            store_into_storage("pid_" + element.pid.toString(), JSON.stringify(element));
+            store_into_storage("hole", element.pid.toString(), element);
             console.log("cache pid: ", element.pid);
         });
     } else if (url.includes("pku_comment_v3")) {
         let pid = Number(url.split("pku_comment_v3/")[1].split("?")[0]);
         if (response_json.code == 20000) {
             let response_data = response_json.data.data;
-            update_comment_list(pid, response_data);
-            response_data.forEach(function (element) {
-                store_into_storage("cid_" + element.cid.toString(), JSON.stringify(element));
-                console.log("cache cid: ", element.cid);
-            });
+            if (response_data) {
+                update_comment_list(pid, response_data);
+                response_data.forEach(function (element) {
+                    store_into_storage("comments", element.cid.toString(), element);
+                    console.log("cache cid: ", element.cid);
+                });
+            }
+
         }
     }
 }
 
 function find_cache_available(pid) {
-    let value = localStorage.getItem("pid_" + pid.toString());
-    if (value) {
-        value = JSON.parse(value);
+    let value = searchdata("hole", "id", pid.toString())
+    console.log("value", value);
+    if (!value) {
+        value = null;
     }
     return value;
 }
@@ -231,11 +236,10 @@ function modify_holeapi_hole(pid, response_json) {
 }
 
 function modify_comment_page(pid, page, limit) {
-    let comment_list_str = localStorage.getItem("comment_" + pid.toString());
-    if (!comment_list_str) {
+    let comment_list = searchdata("map", "id", pid.toString());
+    if (!comment_list) {
         return null;
     }
-    let comment_list = JSON.parse(comment_list_str);
     if (page == null) {
         page = 1;
     }
@@ -252,11 +256,12 @@ function modify_comment_page(pid, page, limit) {
     let data = [];
     for (var i = (page - 1) * 15; i < page * 15; i++) {
         if (i >= comment_list.length) { break; }
-        let comment_ = localStorage.getItem("cid_" + comment_list[i].toString());
+        let comment_ = searchdata("comments", "id", comment_list[i].toString());
+
         if (comment_ == null) {
             data.push([]);
         } else {
-            let cid_cache = JSON.parse(comment_);
+            let cid_cache = comment_;
             cid_cache.tag = "backup";
             data.push(cid_cache);
         }
@@ -279,6 +284,7 @@ function update_response(url, request) {
     let response_json = JSON.parse(request.response);
     let modifiedtext;
     if (url.includes("api/pku_hole") && url.includes("page") && (!url.includes("keyword"))) {
+        // var pid = Number(url.split("api/pku")[1]);
         modifiedtext = modify_holeapi_page(response_json);
         Object.defineProperty(request, 'responseText', { value: modifiedtext });
 
@@ -291,6 +297,9 @@ function update_response(url, request) {
         }
     } else if (url.includes("pku_comment_v3")) {
         params = url.split("?")[1].split("&")
+        if (url.includes("undefined")) {
+            return;
+        }
         let pid = Number(url.match(/comment_v3\/(\d+)\?/)[1]);
         let limit = Number(url.match(/limit=(\d+)/)[1]);
         let page = null;
@@ -305,7 +314,7 @@ function update_response(url, request) {
         }
     } else if (url.includes("/api/pku/")) {
         let pid = Number(url.split("/api/pku/")[1]);
-        if (response_json.code != 20000) {
+        if (response_json.code != 20000 && pid < 10000000) {
             modifiedtext = modify_single_hole(pid);
             if (modifiedtext) {
                 Object.defineProperty(request, 'responseText', { value: modifiedtext });
@@ -323,9 +332,113 @@ function handle_response(url, request) {
     update_response(url, request);
 }
 
+var db;
+
+async function searchdata_(tableName, indexName, query) {
+    console.log("tableName", tableName)
+    var transaction = db.transaction(tableName, 'readonly');
+    var objectStore = transaction.objectStore(tableName);
+    var index = objectStore.index(indexName);
+    var request = await index.get(query);
+
+    return new Promise((resolve, reject) => {
+        request.onsuccess = function (event) {
+            var result = event.target.result;
+            if (result) {
+                result = result.value;
+            }
+            console.log('search res', result);
+            resolve(result);
+        };
+
+        request.onerror = function (event) {
+            console.error('search error', event.target.error);
+            reject(event.target.error);
+        };
+    });
+
+}
+
+function searchdata(tableName, indexName, query) {
+    let result;
+    searchdata_(tableName, indexName, query)
+        .then((value) => {
+            result = value;
+        })
+    return result;
+}
+
+
+function addData(store, id, value) {
+    if (!db) {
+        console.log('db connection is not open');
+        return;
+    }
+
+    var transaction = db.transaction(store, 'readwrite');
+    var objectStore = transaction.objectStore(store);
+    var data = { id: id, value: value };
+    var addRequest = objectStore.add(data);
+
+    addRequest.onsuccess = function (event) {
+        console.log('addData success');
+    };
+
+    addRequest.onerror = function (event) {
+        // console.log('数据添加失败',event);
+    };
+}
+
+async function openDatabase() {
+    return new Promise(function (resolve, reject) {
+        var request = indexedDB.open('treeholedb', 1);
+
+        request.onsuccess = function (event) {
+            db = event.target.result;
+            console.log('openDatabase success');
+            resolve(db);
+        };
+
+        request.onerror = function (event) {
+            console.log('openDatabase fail');
+            reject(event.target.error);
+        };
+        request.onupgradeneeded = function (event) {
+            var db = event.target.result;
+            var tableNames = ['hole', 'comments', 'map'];
+
+            tableNames.forEach(function (tableName) {
+                if (!db.objectStoreNames.contains(tableName)) {
+                    var objectStore = db.createObjectStore(tableName, { keyPath: 'id' });
+
+                    objectStore.createIndex('id', 'id', { unique: false });
+                    objectStore.createIndex('value', 'value', { unique: true });
+
+                    console.log(tableName + '对象存储空间已创建');
+                }
+            });
+        };
+    });
+}
+
+function connectToDatabase() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await openDatabase();
+            console.log('connectToDatabase success');
+            resolve();
+        } catch (error) {
+            console.log('connectToDatabase failed', error);
+            reject(error);
+        }
+    });
+}
+
 (function () {
     'use strict';
     var originalOpen = XMLHttpRequest.prototype.open;
+    connectToDatabase();
+
     XMLHttpRequest.prototype.open = function (method, url) {
         this.addEventListener("readystatechange", function () {
             if (this.readyState === 4) {
